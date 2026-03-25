@@ -114,6 +114,7 @@ public class SessionPersistenceService
         {
             CapturedAt = source.CapturedAt,
             WorkingDirectory = source.WorkingDirectory,
+            Shell = source.Shell,
             CommandHistory = source.CommandHistory.ToList(),
             BufferSnapshot = source.BufferSnapshot == null
                 ? null

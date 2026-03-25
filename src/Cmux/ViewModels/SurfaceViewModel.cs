@@ -17,6 +17,7 @@ public partial class SurfaceViewModel : ObservableObject, IDisposable
     private readonly NotificationService _notificationService;
     private readonly Dictionary<string, TerminalSession> _sessions = [];
     private readonly Dictionary<string, List<string>> _paneCommandHistory = [];
+    private readonly Dictionary<string, string?> _paneShells = [];
     private readonly HashSet<string> _daemonPanes = [];
     private readonly HashSet<string> _daemonOutputLogged = [];
     private static readonly object _daemonWaitLock = new();
@@ -80,7 +81,7 @@ public partial class SurfaceViewModel : ObservableObject, IDisposable
                         .ToList();
                 }
 
-                StartSession(leaf.PaneId, snapshot?.WorkingDirectory, snapshot);
+                StartSession(leaf.PaneId, snapshot?.WorkingDirectory, snapshot, snapshot?.Shell);
             }
         }
 
@@ -143,7 +144,7 @@ public partial class SurfaceViewModel : ObservableObject, IDisposable
 
             try
             {
-                session.Start(command: GetConfiguredShell(), workingDirectory: cwd);
+                session.Start(command: _paneShells.GetValueOrDefault(paneId) ?? GetConfiguredShell(), workingDirectory: cwd);
                 DaemonLog($"[DaemonDisconnected] {paneId} → local session started");
             }
             catch (Exception ex)
@@ -258,6 +259,7 @@ public partial class SurfaceViewModel : ObservableObject, IDisposable
 
             state.CapturedAt = DateTime.UtcNow;
             state.WorkingDirectory = session.WorkingDirectory;
+            state.Shell = _paneShells.GetValueOrDefault(paneId);
             state.BufferSnapshot = session.CreateBufferSnapshot(maxScrollbackLines: 3000);
 
             if (_paneCommandHistory.TryGetValue(paneId, out var history))
@@ -331,8 +333,12 @@ public partial class SurfaceViewModel : ObservableObject, IDisposable
             history.RemoveAt(0);
     }
 
-    private TerminalSession StartSession(string paneId, string? workingDirectory = null, PaneStateSnapshot? restoredState = null)
+    private TerminalSession StartSession(string paneId, string? workingDirectory = null, PaneStateSnapshot? restoredState = null, string? shell = null)
     {
+        var effectiveShell = shell ?? GetConfiguredShell();
+        // Store the explicit override (null = use default shell from settings)
+        _paneShells[paneId] = shell;
+
         // Wait for daemon connect task (includes starting daemon if needed).
         // First pane blocks up to 5s; subsequent panes get the cached result instantly.
         lock (_daemonWaitLock)
@@ -356,7 +362,7 @@ public partial class SurfaceViewModel : ObservableObject, IDisposable
         {
             try
             {
-                return StartDaemonSession(paneId, workingDirectory, restoredState);
+                return StartDaemonSession(paneId, workingDirectory, restoredState, effectiveShell);
             }
             catch (Exception ex)
             {
@@ -365,12 +371,12 @@ public partial class SurfaceViewModel : ObservableObject, IDisposable
         }
 
         DaemonLog($"[StartSession:{paneId}] Using LOCAL session");
-        return StartLocalSession(paneId, workingDirectory, restoredState);
+        return StartLocalSession(paneId, workingDirectory, restoredState, effectiveShell);
     }
 
     private static void DaemonLog(string message) => App.DaemonLog(message);
 
-    private TerminalSession StartDaemonSession(string paneId, string? workingDirectory, PaneStateSnapshot? restoredState)
+    private TerminalSession StartDaemonSession(string paneId, string? workingDirectory, PaneStateSnapshot? restoredState, string? shell)
     {
         // Use saved snapshot dimensions if available (avoids spurious resize on reconnect)
         var initCols = restoredState?.BufferSnapshot?.Cols ?? 120;
@@ -403,7 +409,7 @@ public partial class SurfaceViewModel : ObservableObject, IDisposable
                     _daemonPanes.Remove(paneId);
                     session.DaemonWrite = null;
                     session.DaemonResize = null;
-                    session.Start(command: GetConfiguredShell(), workingDirectory: effectiveCwd);
+                    session.Start(command: shell, workingDirectory: effectiveCwd);
                     return;
                 }
 
@@ -452,7 +458,7 @@ public partial class SurfaceViewModel : ObservableObject, IDisposable
                 _daemonPanes.Remove(paneId);
                 session.DaemonWrite = null;
                 session.DaemonResize = null;
-                session.Start(command: GetConfiguredShell(), workingDirectory: effectiveCwd);
+                session.Start(command: shell, workingDirectory: effectiveCwd);
             }
         });
 
@@ -468,13 +474,13 @@ public partial class SurfaceViewModel : ObservableObject, IDisposable
         return string.IsNullOrWhiteSpace(shell) ? null : shell;
     }
 
-    private TerminalSession StartLocalSession(string paneId, string? workingDirectory, PaneStateSnapshot? restoredState)
+    private TerminalSession StartLocalSession(string paneId, string? workingDirectory, PaneStateSnapshot? restoredState, string? shell)
     {
         var session = new TerminalSession(paneId);
         WireSessionEvents(session, paneId);
 
         _sessions[paneId] = session;
-        session.Start(command: GetConfiguredShell(), workingDirectory: workingDirectory ?? restoredState?.WorkingDirectory);
+        session.Start(command: shell, workingDirectory: workingDirectory ?? restoredState?.WorkingDirectory);
 
         if (restoredState?.BufferSnapshot != null)
             session.RestoreBufferSnapshot(restoredState.BufferSnapshot);
@@ -529,7 +535,7 @@ public partial class SurfaceViewModel : ObservableObject, IDisposable
         SplitFocused(SplitDirection.Horizontal);
     }
 
-    public void SplitFocused(SplitDirection direction)
+    public void SplitFocused(SplitDirection direction, string? shell = null)
     {
         if (FocusedPaneId == null) return;
 
@@ -541,12 +547,18 @@ public partial class SurfaceViewModel : ObservableObject, IDisposable
         {
             var currentSession = GetSession(FocusedPaneId);
             var cwd = currentSession?.WorkingDirectory;
-            StartSession(newChild.PaneId, cwd);
+            var effectiveShell = shell ?? _paneShells.GetValueOrDefault(FocusedPaneId);
+            StartSession(newChild.PaneId, cwd, null, effectiveShell);
             FocusedPaneId = newChild.PaneId;
         }
 
         // Trigger UI update
         OnPropertyChanged(nameof(RootNode));
+    }
+
+    public void OpenPaneWithShell(string shellPath)
+    {
+        SplitFocused(SplitDirection.Vertical, shellPath);
     }
 
     [RelayCommand]
@@ -577,6 +589,7 @@ public partial class SurfaceViewModel : ObservableObject, IDisposable
         Surface.PaneCustomNames.Remove(paneId);
         Surface.PaneSnapshots.Remove(paneId);
         _paneCommandHistory.Remove(paneId);
+        _paneShells.Remove(paneId);
 
         // If this is the only pane, don't remove it
         var leaves = RootNode.GetLeaves().ToList();
@@ -651,5 +664,6 @@ public partial class SurfaceViewModel : ObservableObject, IDisposable
             session.Dispose();
         _sessions.Clear();
         _daemonPanes.Clear();
+        _paneShells.Clear();
     }
 }
