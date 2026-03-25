@@ -143,7 +143,7 @@ public partial class SurfaceViewModel : ObservableObject, IDisposable
 
             try
             {
-                session.Start(workingDirectory: cwd);
+                session.Start(command: GetConfiguredShell(), workingDirectory: cwd);
                 DaemonLog($"[DaemonDisconnected] {paneId} → local session started");
             }
             catch (Exception ex)
@@ -403,7 +403,7 @@ public partial class SurfaceViewModel : ObservableObject, IDisposable
                     _daemonPanes.Remove(paneId);
                     session.DaemonWrite = null;
                     session.DaemonResize = null;
-                    session.Start(workingDirectory: effectiveCwd);
+                    session.Start(command: GetConfiguredShell(), workingDirectory: effectiveCwd);
                     return;
                 }
 
@@ -452,7 +452,7 @@ public partial class SurfaceViewModel : ObservableObject, IDisposable
                 _daemonPanes.Remove(paneId);
                 session.DaemonWrite = null;
                 session.DaemonResize = null;
-                session.Start(workingDirectory: effectiveCwd);
+                session.Start(command: GetConfiguredShell(), workingDirectory: effectiveCwd);
             }
         });
 
@@ -462,13 +462,19 @@ public partial class SurfaceViewModel : ObservableObject, IDisposable
         return session;
     }
 
+    private static string? GetConfiguredShell()
+    {
+        var shell = SettingsService.Current.DefaultShell;
+        return string.IsNullOrWhiteSpace(shell) ? null : shell;
+    }
+
     private TerminalSession StartLocalSession(string paneId, string? workingDirectory, PaneStateSnapshot? restoredState)
     {
         var session = new TerminalSession(paneId);
         WireSessionEvents(session, paneId);
 
         _sessions[paneId] = session;
-        session.Start(workingDirectory: workingDirectory ?? restoredState?.WorkingDirectory);
+        session.Start(command: GetConfiguredShell(), workingDirectory: workingDirectory ?? restoredState?.WorkingDirectory);
 
         if (restoredState?.BufferSnapshot != null)
             session.RestoreBufferSnapshot(restoredState.BufferSnapshot);
