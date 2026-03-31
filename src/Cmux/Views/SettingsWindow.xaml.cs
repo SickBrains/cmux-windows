@@ -43,7 +43,7 @@ public partial class SettingsWindow : Window
         AgentChatFontFamilyCombo.ItemsSource = fontFamilies;
 
         // Detect available shells
-        var shells = DetectShells();
+        var shells = ShellDetector.DetectShells();
         ShellCombo.ItemsSource = shells;
         ShellCombo.DisplayMemberPath = "Name";
         ShellCombo.SelectedValuePath = "Path";
@@ -1013,62 +1013,6 @@ public partial class SettingsWindow : Window
         RefreshTerminalColorPreviews();
     }
 
-    private List<ShellInfo> DetectShells()
-    {
-        var shells = new List<ShellInfo>();
-
-        try
-        {
-            // PowerShell 7+
-            var pwshRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "PowerShell");
-            if (Directory.Exists(pwshRoot))
-            {
-                var pwshPaths = Directory.GetFiles(pwshRoot, "pwsh.exe", SearchOption.AllDirectories);
-                foreach (var path in pwshPaths.OrderByDescending(p => p)) // newest first
-                    shells.Add(new ShellInfo("PowerShell 7", path));
-            }
-        } catch { /* ignore */ }
-
-        try
-        {
-            // Windows PowerShell
-            var system32 = Environment.GetFolderPath(Environment.SpecialFolder.System);
-            var powershell = Path.Combine(system32, "WindowsPowerShell", "v1.0", "powershell.exe");
-            if (File.Exists(powershell))
-                shells.Add(new ShellInfo("Windows PowerShell", powershell));
-
-            // Command Prompt
-            var cmd = Path.Combine(system32, "cmd.exe");
-            if (File.Exists(cmd))
-                shells.Add(new ShellInfo("Command Prompt", cmd));
-
-            // WSL
-            var wslPath = Path.Combine(system32, "wsl.exe");
-            if (File.Exists(wslPath))
-                shells.Add(new ShellInfo("WSL", wslPath));
-        } catch { /* ignore */ }
-
-        try
-        {
-            // Git Bash
-            var gitBashPaths = new[]
-            {
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Git", "bin", "bash.exe"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Git", "bin", "bash.exe"),
-            };
-            foreach (var path in gitBashPaths)
-            {
-                if (File.Exists(path))
-                {
-                    shells.Add(new ShellInfo("Git Bash", path));
-                    break;
-                }
-            }
-        } catch { /* ignore */ }
-
-        return shells;
-    }
-
     private static bool IsSystemLightTheme()
     {
         try
@@ -1091,5 +1035,4 @@ public partial class SettingsWindow : Window
         };
     }
 
-    private record ShellInfo(string Name, string Path);
 }

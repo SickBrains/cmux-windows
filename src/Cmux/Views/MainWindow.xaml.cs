@@ -10,6 +10,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using Cmux.Controls;
+using Cmux.Core.Services;
 using Cmux.ViewModels;
 using Cmux.Services;
 
@@ -646,6 +647,27 @@ public partial class MainWindow : Window
     // Toolbar handlers
     private void ToolbarSplitRight_Click(object sender, RoutedEventArgs e) => ViewModel.SelectedWorkspace?.SelectedSurface?.SplitRight();
     private void ToolbarSplitDown_Click(object sender, RoutedEventArgs e) => ViewModel.SelectedWorkspace?.SelectedSurface?.SplitDown();
+    private void ShellSelector_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button) return;
+
+        var shells = ShellDetector.DetectShells();
+        var menu = new ContextMenu();
+
+        foreach (var shell in shells)
+        {
+            var item = new MenuItem { Header = shell.Name, Tag = shell.Path };
+            item.Click += (s, _) =>
+            {
+                if (s is MenuItem mi && mi.Tag is string path)
+                    ViewModel.SelectedWorkspace?.SelectedSurface?.OpenPaneWithShell(path);
+            };
+            menu.Items.Add(item);
+        }
+
+        menu.PlacementTarget = button;
+        menu.IsOpen = true;
+    }
     private void ToggleAgentChat_Click(object sender, RoutedEventArgs e) => ToggleAgentChat();
     private void ToolbarLayout2Col_Click(object sender, RoutedEventArgs e) => ApplyLayout(2, 1);
     private void ToolbarLayoutGrid_Click(object sender, RoutedEventArgs e) => ApplyLayout(2, 2);

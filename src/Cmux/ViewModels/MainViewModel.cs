@@ -128,6 +128,7 @@ public partial class MainViewModel : ObservableObject
                 {
                     CapturedAt = snapshot.CapturedAt,
                     WorkingDirectory = snapshot.WorkingDirectory,
+                    Shell = snapshot.Shell,
                     CommandHistory = snapshot.CommandHistory.ToList(),
                     BufferSnapshot = snapshot.BufferSnapshot == null
                         ? null
@@ -321,6 +322,7 @@ public partial class MainViewModel : ObservableObject
                         {
                             CapturedAt = kvp.Value.CapturedAt,
                             WorkingDirectory = kvp.Value.WorkingDirectory,
+                            Shell = kvp.Value.Shell,
                             CommandHistory = kvp.Value.CommandHistory.ToList(),
                             BufferSnapshot = kvp.Value.BufferSnapshot == null
                                 ? null
