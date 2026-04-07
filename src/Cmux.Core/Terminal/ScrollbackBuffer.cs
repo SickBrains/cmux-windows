@@ -59,7 +59,7 @@ public sealed class ScrollbackBuffer<T>
 
     public void Clear()
     {
-        Array.Clear(_items, 0, _items.Length);
+        // Just reset pointers — let GC collect the old references naturally
         _head = 0;
         _count = 0;
     }

@@ -24,6 +24,9 @@ public sealed class TerminalSession : IDisposable
     private volatile bool _localWriteNullLogged;
     private readonly object _lock = new();
 
+    /// <summary>Lock object for synchronizing buffer access between read thread and UI thread.</summary>
+    public object BufferLock => _lock;
+
     public TerminalBuffer Buffer { get; }
     public string PaneId { get; }
     public string? Title { get; private set; }
@@ -194,22 +197,21 @@ public sealed class TerminalSession : IDisposable
                 int bytesRead = _readStream.Read(buffer, 0, buffer.Length);
                 if (bytesRead == 0) break;
 
-                var chunk = buffer.AsSpan(0, bytesRead).ToArray();
-
                 lock (_lock)
                 {
                     try
                     {
-                        _parser.Feed(chunk);
+                        _parser.Feed(buffer.AsSpan(0, bytesRead));
                     }
                     catch (Exception ex)
                     {
-                        // Never let malformed/edge VT sequences crash the app.
                         Debug.WriteLine($"[TerminalSession:{PaneId}] VT parse error: {ex}");
                     }
                 }
 
-                RawOutputReceived?.Invoke(chunk);
+                // Only allocate for RawOutputReceived if anyone is listening
+                if (RawOutputReceived != null)
+                    RawOutputReceived.Invoke(buffer.AsSpan(0, bytesRead).ToArray());
                 OutputReceived?.Invoke();
                 Redraw?.Invoke();
             }
@@ -643,5 +645,16 @@ public sealed class TerminalSession : IDisposable
         _writeStream?.Dispose();
         _process?.Dispose();
         _console?.Dispose();
+
+        // Clear all event delegates to release subscribers
+        OutputReceived = null;
+        ProcessExited = null;
+        TitleChanged = null;
+        WorkingDirectoryChanged = null;
+        NotificationReceived = null;
+        ShellPromptMarker = null;
+        Redraw = null;
+        BellReceived = null;
+        RawOutputReceived = null;
     }
 }

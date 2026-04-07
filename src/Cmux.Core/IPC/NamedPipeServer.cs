@@ -4,6 +4,14 @@ using System.Text.Json;
 
 namespace Cmux.Core.IPC;
 
+// UTF-8 without BOM — critical for named pipes. Encoding.UTF8 includes a BOM preamble,
+// and FlushFileBuffers() on Windows named pipes blocks until the remote end reads.
+// If both sides write a BOM and flush simultaneously, it deadlocks.
+static file class PipeEncoding
+{
+    internal static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
+}
+
 /// <summary>
 /// Named pipe server for cmux CLI/API communication.
 /// Windows equivalent of the Unix domain socket used by cmux on macOS.
@@ -70,8 +78,8 @@ public sealed class NamedPipeServer : IDisposable
         {
             using (pipe)
             {
-                using var reader = new StreamReader(pipe, Encoding.UTF8, leaveOpen: true);
-                using var writer = new StreamWriter(pipe, Encoding.UTF8, leaveOpen: true) { AutoFlush = true };
+                using var reader = new StreamReader(pipe, PipeEncoding.Utf8NoBom, leaveOpen: true);
+                using var writer = new StreamWriter(pipe, PipeEncoding.Utf8NoBom, leaveOpen: true) { AutoFlush = true };
 
                 var requestLine = await reader.ReadLineAsync(ct);
                 if (string.IsNullOrEmpty(requestLine)) return;
@@ -106,6 +114,10 @@ public sealed class NamedPipeServer : IDisposable
         catch (OperationCanceledException)
         {
             // Server shutting down
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[PipeServer] Unhandled error in HandleConnection: {ex}");
         }
     }
 
@@ -217,8 +229,8 @@ public static class NamedPipeClient
 
         await pipe.ConnectAsync(cts.Token);
 
-        using var reader = new StreamReader(pipe, Encoding.UTF8, leaveOpen: true);
-        using var writer = new StreamWriter(pipe, Encoding.UTF8, leaveOpen: true) { AutoFlush = true };
+        using var reader = new StreamReader(pipe, PipeEncoding.Utf8NoBom, leaveOpen: true);
+        using var writer = new StreamWriter(pipe, PipeEncoding.Utf8NoBom, leaveOpen: true) { AutoFlush = true };
 
         var sb = new StringBuilder(command);
         if (args != null)

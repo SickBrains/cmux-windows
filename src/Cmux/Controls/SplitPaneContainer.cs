@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -39,8 +40,10 @@ public class SplitPaneContainer : ContentControl
             oldSurface.PropertyChanged -= OnSurfacePropertyChanged;
         }
 
-        // Clear terminal cache when switching surfaces/workspaces
+        // Clean up and clear terminal cache when switching surfaces/workspaces
         // This prevents reusing terminals from a different workspace
+        foreach (var terminal in _terminalCache.Values)
+            terminal.Cleanup();
         _terminalCache.Clear();
 
         _surface = e.NewValue as SurfaceViewModel;
@@ -101,11 +104,31 @@ public class SplitPaneContainer : ContentControl
             if (focusedNode != null)
             {
                 Content = BuildLeaf(focusedNode);
+                PruneStaleTerminals();
                 return;
             }
         }
 
         Content = BuildNode(_surface.RootNode);
+        PruneStaleTerminals();
+    }
+
+    /// <summary>
+    /// Removes cached terminals for panes that no longer exist in the tree,
+    /// stopping their timers to prevent resource accumulation.
+    /// </summary>
+    private void PruneStaleTerminals()
+    {
+        if (_surface == null) return;
+
+        var activePaneIds = _surface.RootNode.GetLeaves().Select(n => n.PaneId).Where(id => id != null).ToHashSet();
+        var staleIds = _terminalCache.Keys.Where(id => !activePaneIds.Contains(id)).ToList();
+
+        foreach (var id in staleIds)
+        {
+            _terminalCache[id].Cleanup();
+            _terminalCache.Remove(id);
+        }
     }
 
     private UIElement BuildNode(SplitNode node)

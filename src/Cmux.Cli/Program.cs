@@ -37,6 +37,8 @@ public static class Program
                 "workspace" => await HandleWorkspace(args[1..]),
                 "surface" => await HandleSurface(args[1..]),
                 "split" => await HandleSplit(args[1..]),
+                "pane" => await HandlePane(args[1..]),
+                "run" => await HandleRun(args[1..]),
                 "status" => await HandleStatus(),
                 "help" or "--help" or "-h" => PrintHelp(),
                 "version" or "--version" or "-v" => PrintVersion(),
@@ -131,6 +133,55 @@ public static class Program
             "down" or "horizontal" or "h" => await SendAndPrint("SPLIT.DOWN"),
             _ => Error($"Unknown split direction: {direction}"),
         };
+    }
+
+    private static async Task<int> HandlePane(string[] args)
+    {
+        if (args.Length == 0)
+        {
+            Console.Error.WriteLine("Usage: cmux pane <list|focus|write|read>");
+            return 1;
+        }
+
+        var subcommand = args[0].ToLowerInvariant();
+        var parsed = ParseArgs(args[1..]);
+
+        return subcommand switch
+        {
+            "list" or "ls" => await SendAndPrint("PANE.LIST", parsed),
+            "focus" => await SendAndPrint("PANE.FOCUS", parsed),
+            "write" => await SendAndPrint("PANE.WRITE", parsed),
+            "read" => await SendAndPrint("PANE.READ", parsed),
+            _ => Error($"Unknown pane command: {subcommand}"),
+        };
+    }
+
+    /// <summary>
+    /// Splits the current pane down and runs a command in the new pane.
+    /// Usage: cmux run "npm run dev"
+    /// </summary>
+    private static async Task<int> HandleRun(string[] args)
+    {
+        if (args.Length == 0)
+        {
+            Console.Error.WriteLine("Usage: cmux run <command>");
+            return 1;
+        }
+
+        // Split down (Ctrl+Shift+D equivalent)
+        await NamedPipeClient.SendCommand("SPLIT.DOWN");
+
+        // Wait for the new pane to initialize its shell session
+        await Task.Delay(500);
+
+        // Write the command into the newly focused pane and submit
+        var command = string.Join(" ", args);
+        var writeArgs = new Dictionary<string, string>
+        {
+            ["text"] = command,
+            ["submit"] = "true",
+        };
+        return await SendAndPrint("PANE.WRITE", writeArgs);
     }
 
     private static async Task<int> HandleStatus()
@@ -235,6 +286,18 @@ public static class Program
                 right               Split vertically (left/right)
                 down                Split horizontally (top/bottom)
 
+              pane                  Manage panes
+                list                List panes in current surface
+                focus               Focus a pane
+                  --paneIndex <n>   Pane index (1-based)
+                write               Write text to a pane
+                  --text <text>     Text to write
+                  --submit          Press Enter after writing
+                read                Read pane content
+                  --lines <n>       Number of lines (default: 80)
+
+              run <command>         Split down and run a command in the new pane
+
               status                Show cmux status
 
             Keyboard Shortcuts (in the app):
@@ -256,7 +319,7 @@ public static class Program
 
     private static int PrintVersion()
     {
-        Console.WriteLine("cmux 1.0.6 (Windows)");
+        Console.WriteLine("cmux 1.1.2 (Windows)");
         return 0;
     }
 

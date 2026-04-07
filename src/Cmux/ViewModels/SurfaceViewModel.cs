@@ -119,6 +119,23 @@ public partial class SurfaceViewModel : ObservableObject, IDisposable
     {
         if (!_daemonPanes.Contains(paneId)) return;
         _daemonPanes.Remove(paneId);
+
+        // Fall back to local ConPTY so the pane stays usable
+        if (!_sessions.TryGetValue(paneId, out var session)) return;
+
+        var cwd = session.WorkingDirectory;
+        session.DaemonWrite = null;
+        session.DaemonResize = null;
+
+        try
+        {
+            session.Start(command: _paneShells.GetValueOrDefault(paneId) ?? GetConfiguredShell(), workingDirectory: cwd);
+            DaemonLog($"[DaemonSessionExited:{paneId}] Fell back to local ConPTY (exitCode={exitCode})");
+        }
+        catch (Exception ex)
+        {
+            DaemonLog($"[DaemonSessionExited:{paneId}] Local fallback failed: {ex.Message}");
+        }
     }
 
     private void OnDaemonBellReceived(string paneId)
@@ -295,23 +312,7 @@ public partial class SurfaceViewModel : ObservableObject, IDisposable
 
     public bool TryHandlePaneCommand(string paneId, string command)
     {
-        if (!_sessions.TryGetValue(paneId, out var session))
-            return false;
-
-        return App.AgentRuntime.TryHandlePaneCommand(
-            command,
-            new Cmux.Services.AgentPaneContext
-            {
-                WorkspaceId = _workspaceId,
-                SurfaceId = Surface.Id,
-                PaneId = paneId,
-                WorkingDirectory = session.WorkingDirectory,
-                WriteToPane = text =>
-                {
-                    if (!string.IsNullOrEmpty(text))
-                        session.Write(text);
-                },
-            });
+        return false;
     }
 
     private void AppendToCommandHistory(string paneId, string command)
@@ -663,6 +664,7 @@ public partial class SurfaceViewModel : ObservableObject, IDisposable
         foreach (var session in _sessions.Values)
             session.Dispose();
         _sessions.Clear();
+        _paneCommandHistory.Clear();
         _daemonPanes.Clear();
         _paneShells.Clear();
     }

@@ -64,6 +64,7 @@ public class TerminalControl : FrameworkElement
 
     // Rendering caches to avoid per-frame allocations
     private readonly Dictionary<Color, SolidColorBrush> _brushCache = [];
+    private readonly Dictionary<Color, Pen> _penCache = [];
     private Typeface? _typefaceBold;
     private Typeface? _typefaceItalic;
     private Typeface? _typefaceBoldItalic;
@@ -91,6 +92,28 @@ public class TerminalControl : FrameworkElement
         ZoomRequested = null;
         ClosePaneRequested = null;
         SearchRequested = null;
+    }
+
+    /// <summary>Stops timers and detaches session. Call when disposing or removing from cache.</summary>
+    public void Cleanup()
+    {
+        _cursorTimer?.Stop();
+        _bellTimer?.Stop();
+
+        if (_session != null)
+        {
+            _session.Redraw -= OnRedraw;
+            _session.BellReceived -= OnBell;
+            _session = null;
+        }
+
+        _searchMatches = [];
+        _searchMatchSetCache = null;
+        _currentMatchSetCache = null;
+        _brushCache.Clear();
+        _penCache.Clear();
+
+        ClearEventHandlers();
     }
 
     /// <summary>Whether this pane has notification state (blue ring).</summary>
@@ -157,7 +180,7 @@ public class TerminalControl : FrameworkElement
             if (_cursorVisible != wasVisible)
                 RequestRender();
         };
-        _cursorTimer.Start();
+        // Timer starts when pane gains focus (OnIsPaneFocusedChanged)
     }
 
     public void AttachSession(TerminalSession session)
@@ -185,17 +208,16 @@ public class TerminalControl : FrameworkElement
             return;
 
         var currentScrollback = _session.Buffer.ScrollbackCount;
+
         var scrollbackDelta = currentScrollback - _lastScrollbackCount;
 
         if (_followOutput || _scrollOffset == 0)
         {
-            // Live mode: always stick to bottom.
             _scrollOffset = 0;
             _followOutput = true;
         }
         else if (_scrollOffset < 0 && scrollbackDelta > 0)
         {
-            // Freeze viewport while output is streaming.
             _scrollOffset -= scrollbackDelta;
         }
 
@@ -339,9 +361,21 @@ public class TerminalControl : FrameworkElement
         return brush;
     }
 
+    private Pen GetCachedPen(Color color)
+    {
+        if (_penCache.TryGetValue(color, out var pen))
+            return pen;
+
+        pen = new Pen(GetCachedBrush(color), 1);
+        pen.Freeze();
+        _penCache[color] = pen;
+        return pen;
+    }
+
     private void InvalidateRenderCaches()
     {
         _brushCache.Clear();
+        _penCache.Clear();
         _typefaceBold = null;
         _typefaceItalic = null;
         _typefaceBoldItalic = null;
@@ -361,6 +395,8 @@ public class TerminalControl : FrameworkElement
 
         try
         {
+            if (_session == null) return;
+
             var buffer = _session.Buffer;
             using var dc = _visual.RenderOpen();
             var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
@@ -379,17 +415,13 @@ public class TerminalControl : FrameworkElement
             // Notification ring
             if (HasNotification)
             {
-                var notifPen = new Pen(GetCachedBrush(Color.FromArgb(180, 0x63, 0x66, 0xF1)), 2);
-                notifPen.Freeze();
-                dc.DrawRoundedRectangle(null, notifPen, new Rect(1, 1, ActualWidth - 2, ActualHeight - 2), 4, 4);
+                dc.DrawRoundedRectangle(null, GetCachedPen(Color.FromArgb(180, 0x63, 0x66, 0xF1)), new Rect(1, 1, ActualWidth - 2, ActualHeight - 2), 4, 4);
             }
 
             // Focused pane indicator
             if (IsPaneFocused)
             {
-                var focusPen = new Pen(GetCachedBrush(Color.FromArgb(50, 0x81, 0x8C, 0xF8)), 1);
-                focusPen.Freeze();
-                dc.DrawRectangle(null, focusPen, new Rect(0, 0, ActualWidth, ActualHeight));
+                dc.DrawRectangle(null, GetCachedPen(Color.FromArgb(50, 0x81, 0x8C, 0xF8)), new Rect(0, 0, ActualWidth, ActualHeight));
             }
 
             // Calculate scrollback offset
@@ -480,9 +512,7 @@ public class TerminalControl : FrameworkElement
                     // URL hover highlight
                     if (_hoveredUrl is { } url && visRow == url.row && c >= url.startCol && c <= url.endCol)
                     {
-                        var urlPen = new Pen(GetCachedBrush(Color.FromRgb(0x81, 0x8C, 0xF8)), 1);
-                        urlPen.Freeze();
-                        dc.DrawLine(urlPen, new Point(x, y + _cellHeight - 1), new Point(x + _cellWidth, y + _cellHeight - 1));
+                        dc.DrawLine(GetCachedPen(Color.FromRgb(0x81, 0x8C, 0xF8)), new Point(x, y + _cellHeight - 1), new Point(x + _cellWidth, y + _cellHeight - 1));
                     }
 
                     // Text batching: group consecutive characters with same visual style
@@ -578,6 +608,7 @@ public class TerminalControl : FrameworkElement
                     new Rect(ix, 6, iw, ih), 4, 4);
                 dc.DrawText(indicatorText, new Point(ix + 6, 8));
             }
+            // end render
         }
         catch (Exception ex)
         {
@@ -613,16 +644,14 @@ public class TerminalControl : FrameworkElement
 
         if (underline)
         {
-            var pen = new Pen(brush, 1);
-            pen.Freeze();
-            dc.DrawLine(pen, new Point(x, y + _cellHeight - 1), new Point(x + runWidth, y + _cellHeight - 1));
+            var fgPen = dim ? GetCachedPen(Color.FromArgb(128, fgColor.R, fgColor.G, fgColor.B)) : GetCachedPen(fgColor);
+            dc.DrawLine(fgPen, new Point(x, y + _cellHeight - 1), new Point(x + runWidth, y + _cellHeight - 1));
         }
 
         if (strikethrough)
         {
-            var pen = new Pen(brush, 1);
-            pen.Freeze();
-            dc.DrawLine(pen, new Point(x, y + _cellHeight / 2), new Point(x + runWidth, y + _cellHeight / 2));
+            var fgPen = dim ? GetCachedPen(Color.FromArgb(128, fgColor.R, fgColor.G, fgColor.B)) : GetCachedPen(fgColor);
+            dc.DrawLine(fgPen, new Point(x, y + _cellHeight / 2), new Point(x + runWidth, y + _cellHeight / 2));
         }
     }
 
@@ -1596,6 +1625,11 @@ public class TerminalControl : FrameworkElement
             ctrl._cursorVisible = true;
             if (ctrl._cursorBlink)
                 ctrl._cursorTimer?.Start();
+        }
+        else
+        {
+            ctrl._cursorTimer?.Stop();
+            ctrl._cursorVisible = true; // Show static cursor when unfocused
         }
         ctrl.RequestRender(System.Windows.Threading.DispatcherPriority.Render);
     }

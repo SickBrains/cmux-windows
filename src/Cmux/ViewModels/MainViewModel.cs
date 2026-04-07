@@ -36,12 +36,6 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private int _totalUnreadCount;
 
-    [ObservableProperty]
-    private bool _agentPanelVisible = true;
-
-    [ObservableProperty]
-    private double _agentPanelWidth = 380;
-
     private readonly NotificationService _notificationService;
 
     public NotificationService NotificationService => _notificationService;
@@ -214,9 +208,6 @@ public partial class MainViewModel : ObservableObject
 
     [RelayCommand]
     public void ToggleNotificationPanel() => NotificationPanelVisible = !NotificationPanelVisible;
-
-    [RelayCommand]
-    public void ToggleAgentPanel() => AgentPanelVisible = !AgentPanelVisible;
 
     partial void OnCompactSidebarChanged(bool value)
     {
@@ -409,26 +400,42 @@ public partial class MainViewModel : ObservableObject
 
     private async Task<string> HandlePipeCommand(string command, Dictionary<string, string> args)
     {
-        return await Application.Current.Dispatcher.InvokeAsync(() =>
+        try
         {
-            return command switch
+            return await Application.Current.Dispatcher.InvokeAsync(() =>
             {
-                "NOTIFY" => HandleNotifyCommand(args),
-                "WORKSPACE.LIST" => HandleWorkspaceList(),
-                "WORKSPACE.CREATE" => HandleWorkspaceCreate(args),
-                "WORKSPACE.SELECT" => HandleWorkspaceSelect(args),
-                "SURFACE.CREATE" => HandleSurfaceCreate(args),
-                "SURFACE.SELECT" => HandleSurfaceSelect(args),
-                "SPLIT.RIGHT" => HandleSplit(SplitDirection.Vertical),
-                "SPLIT.DOWN" => HandleSplit(SplitDirection.Horizontal),
-                "PANE.LIST" => HandlePaneList(args),
-                "PANE.FOCUS" => HandlePaneFocus(args),
-                "PANE.WRITE" => HandlePaneWrite(args),
-                "PANE.READ" => HandlePaneRead(args),
-                "STATUS" => HandleStatus(),
-                _ => JsonSerializer.Serialize(new { error = $"Unknown command: {command}" }),
-            };
-        });
+                try
+                {
+                    return command switch
+                    {
+                        "NOTIFY" => HandleNotifyCommand(args),
+                        "WORKSPACE.LIST" => HandleWorkspaceList(),
+                        "WORKSPACE.CREATE" => HandleWorkspaceCreate(args),
+                        "WORKSPACE.SELECT" => HandleWorkspaceSelect(args),
+                        "SURFACE.CREATE" => HandleSurfaceCreate(args),
+                        "SURFACE.SELECT" => HandleSurfaceSelect(args),
+                        "SPLIT.RIGHT" => HandleSplit(SplitDirection.Vertical),
+                        "SPLIT.DOWN" => HandleSplit(SplitDirection.Horizontal),
+                        "PANE.LIST" => HandlePaneList(args),
+                        "PANE.FOCUS" => HandlePaneFocus(args),
+                        "PANE.WRITE" => HandlePaneWrite(args),
+                        "PANE.READ" => HandlePaneRead(args),
+                        "STATUS" => HandleStatus(),
+                        _ => JsonSerializer.Serialize(new { error = $"Unknown command: {command}" }),
+                    };
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[PipeCommand] Handler error: {ex}");
+                    return JsonSerializer.Serialize(new { error = ex.Message });
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[PipeCommand] Dispatch error: {ex}");
+            return JsonSerializer.Serialize(new { error = ex.Message });
+        }
     }
 
     private string HandleNotifyCommand(Dictionary<string, string> args)
@@ -715,7 +722,7 @@ public partial class MainViewModel : ObservableObject
     {
         return JsonSerializer.Serialize(new
         {
-            version = "1.0.6",
+            version = "1.1.2",
             workspaces = Workspaces.Count,
             selectedWorkspace = SelectedWorkspace?.Workspace.Id,
             unreadNotifications = TotalUnreadCount,

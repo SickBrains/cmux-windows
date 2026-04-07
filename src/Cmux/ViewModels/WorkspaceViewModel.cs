@@ -43,11 +43,6 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _hasNotification;
 
-    [ObservableProperty]
-    private AgentType _detectedAgent;
-
-    public string AgentLabel => AgentDetector.GetLabel(DetectedAgent);
-    public string AgentIcon => AgentDetector.GetIcon(DetectedAgent);
     public string IconFontFamily => IsPrivateUseGlyph(IconGlyph) ? "Segoe MDL2 Assets" : "Segoe UI Emoji";
 
     private readonly NotificationService _notificationService;
@@ -79,7 +74,7 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
         }
 
         // Start periodic info refresh (git branch, ports)
-        _infoRefreshTimer = new System.Threading.Timer(_ => RefreshInfo(), null, TimeSpan.Zero, TimeSpan.FromSeconds(5));
+        _infoRefreshTimer = new System.Threading.Timer(_ => RefreshInfo(), null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(15));
     }
 
     [RelayCommand]
@@ -155,18 +150,6 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
                 }
             }
 
-            // AI agent detection
-            var activeSurface = SelectedSurface;
-            if (activeSurface?.ShellPid is int pid and > 0)
-            {
-                var agent = AgentDetector.DetectFromProcessId(pid);
-                if (agent != DetectedAgent)
-                {
-                    DetectedAgent = agent;
-                    OnPropertyChanged(nameof(AgentLabel));
-                    OnPropertyChanged(nameof(AgentIcon));
-                }
-            }
         }
         catch
         {

@@ -7,7 +7,7 @@
             Background="{StaticResource OverlayBackgroundBrush}"
             BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0">
         <Border.Effect>
-            <DropShadowEffect BlurRadius="20" ShadowDepth="0" Color="#000000" Opacity="0.4" />
+            <DropShadowEffect BlurRadius="6" ShadowDepth="0" Color="#000000" Opacity="0.3" />
         </Border.Effect>
         <Border.RenderTransform>
             <TranslateTransform x:Name="PanelTranslate" X="0" />

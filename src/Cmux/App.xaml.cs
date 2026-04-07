@@ -1,27 +1,36 @@
 using System.IO;
+using System.Threading;
 using System.Windows;
 using Cmux.Core.Config;
 using Cmux.Core.IPC;
 using Cmux.Core.Services;
-using Cmux.Services;
 
 namespace Cmux;
 
 public partial class App : Application
 {
+    private static Mutex? _singleInstanceMutex;
+    private static bool _ownsMutex;
     private NamedPipeServer? _pipeServer;
 
     public static NotificationService NotificationService { get; } = new();
     public static NamedPipeServer? PipeServer { get; private set; }
     public static SnippetService SnippetService { get; } = new();
     public static CommandLogService CommandLogService { get; } = new();
-    public static AgentConversationStoreService AgentConversationStore { get; } = new();
-    public static AgentRuntimeService AgentRuntime { get; } = new();
     public static DaemonClient DaemonClient { get; } = new();
     public static Task<bool> DaemonConnectTask { get; private set; } = Task.FromResult(false);
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Prevent multiple instances
+        _singleInstanceMutex = new Mutex(true, "Global\\CmuxWindowsSingleInstance", out _ownsMutex);
+        if (!_ownsMutex)
+        {
+            MessageBox.Show("cmux is already running.", "cmux", MessageBoxButton.OK, MessageBoxImage.Information);
+            Shutdown();
+            return;
+        }
+
         base.OnStartup(e);
 
         // Add global exception handlers to diagnose crashes
@@ -82,7 +91,9 @@ public partial class App : Application
     {
         _pipeServer?.Dispose();
         DaemonClient.Dispose();
-        AgentRuntime.Dispose();
+        if (_ownsMutex)
+            _singleInstanceMutex?.ReleaseMutex();
+        _singleInstanceMutex?.Dispose();
         base.OnExit(e);
     }
 

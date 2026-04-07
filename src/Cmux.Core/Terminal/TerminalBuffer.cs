@@ -79,10 +79,8 @@ public class TerminalBuffer
 
     public ref TerminalCell CellAt(int row, int col)
     {
-        int maxRow = _cells.GetLength(0) - 1;
-        int maxCol = _cells.GetLength(1) - 1;
-        row = Math.Clamp(row, 0, maxRow);
-        col = Math.Clamp(col, 0, maxCol);
+        row = Math.Clamp(row, 0, Rows - 1);
+        col = Math.Clamp(col, 0, Cols - 1);
         return ref _cells[row, col];
     }
 

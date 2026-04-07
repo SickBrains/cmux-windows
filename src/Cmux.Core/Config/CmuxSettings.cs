@@ -52,7 +52,6 @@ public class CmuxSettings
     public List<ShellProfile> ShellProfiles { get; set; } = [];
     public Dictionary<string, string> KeyBindings { get; set; } = [];
     public List<string> RecentDirectories { get; set; } = [];
-    public AgentSettings Agent { get; set; } = new();
 }
 
 /// <summary>
