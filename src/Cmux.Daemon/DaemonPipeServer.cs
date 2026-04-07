@@ -166,7 +166,8 @@ public sealed class DaemonPipeServer
                         if (line.Length > 0)
                         {
                             var response = ProcessRequest(line);
-                            writeChannel.Writer.TryWrite(response);
+                            if (response != null)
+                                writeChannel.Writer.TryWrite(response);
                         }
                     }
                     lineBuffer.Clear();
@@ -189,7 +190,10 @@ public sealed class DaemonPipeServer
         }
     }
 
-    private string ProcessRequest(string requestJson)
+    /// <summary>
+    /// Processes a request. Returns a response string, or null for fire-and-forget commands (writes).
+    /// </summary>
+    private string? ProcessRequest(string requestJson)
     {
         try
         {
@@ -201,10 +205,16 @@ public sealed class DaemonPipeServer
             if (request.Type != DaemonMessageTypes.SessionWrite)
                 LogDaemon($"[PipeServer] Request: {request.Type} pane={request.PaneId}");
 
+            // Writes are fire-and-forget: process but don't send a response
+            if (request.Type == DaemonMessageTypes.SessionWrite)
+            {
+                HandleSessionWrite(request);
+                return null;
+            }
+
             return request.Type switch
             {
                 DaemonMessageTypes.SessionCreate => HandleSessionCreate(request),
-                DaemonMessageTypes.SessionWrite => HandleSessionWrite(request),
                 DaemonMessageTypes.SessionResize => HandleSessionResize(request),
                 DaemonMessageTypes.SessionClose => HandleSessionClose(request),
                 DaemonMessageTypes.SessionList => HandleSessionList(),

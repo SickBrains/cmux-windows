@@ -47,16 +47,18 @@ jobs:
         run: dotnet publish src/Cmux/Cmux.csproj -c Release -r win-x64 --self-contained -o publish/app
 
       - name: Publish CLI
-        run: dotnet publish src/Cmux.Cli/Cmux.Cli.csproj -c Release -r win-x64 --self-contained -o publish/cli
+        run: dotnet publish src/Cmux.Cli/Cmux.Cli.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o publish/cli
+
+      - name: Publish Daemon
+        run: dotnet publish src/Cmux.Daemon/Cmux.Daemon.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o publish/daemon
+
+      - name: Bundle CLI and Daemon into App
+        run: |
+          Copy-Item publish/cli/cmux.exe publish/app/ -Force
+          Copy-Item publish/daemon/cmux-daemon.exe publish/app/ -Force
 
       - name: Upload App Artifact
         uses: actions/upload-artifact@v4
         with:
           name: cmux-windows-x64
           path: publish/app/
-
-      - name: Upload CLI Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: cmux-cli-windows-x64
-          path: publish/cli/

@@ -1,0 +1,13 @@
+<Configuration>
+  <MappedFolders>
+    <MappedFolder>
+      <HostFolder>C:\Users\MAG\Documents\GitHub\cmux-windows</HostFolder>
+      <SandboxFolder>C:\cmux</SandboxFolder>
+      <ReadOnly>false</ReadOnly>
+    </MappedFolder>
+  </MappedFolders>
+  <MemoryInMB>4096</MemoryInMB>
+  <LogonCommand>
+    <Command>powershell -ExecutionPolicy Bypass -Command "Start-Sleep 5; if (Test-Path 'C:\cmux\tools\sandbox-init.ps1') { &amp; 'C:\cmux\tools\sandbox-init.ps1' }"</Command>
+  </LogonCommand>
+</Configuration>

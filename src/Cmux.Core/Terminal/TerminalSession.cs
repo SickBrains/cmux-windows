@@ -33,6 +33,7 @@ public sealed class TerminalSession : IDisposable
     public string? WorkingDirectory { get; set; }
     public bool IsRunning => _process != null && !_process.HasExited;
     public int? ProcessId => _process?.ProcessId;
+    public int ExitCode => _process?.ExitCode ?? -1;
 
     // Daemon-mode delegates: when set, Write/Resize route through these instead of local ConPTY
     public Func<byte[], Task>? DaemonWrite { get; set; }

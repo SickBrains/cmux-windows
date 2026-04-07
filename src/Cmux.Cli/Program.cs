@@ -39,6 +39,7 @@ public static class Program
                 "split" => await HandleSplit(args[1..]),
                 "pane" => await HandlePane(args[1..]),
                 "run" => await HandleRun(args[1..]),
+                "sandbox" => await HandleSandbox(args[1..]),
                 "status" => await HandleStatus(),
                 "help" or "--help" or "-h" => PrintHelp(),
                 "version" or "--version" or "-v" => PrintVersion(),
@@ -189,6 +190,110 @@ public static class Program
         return await SendAndPrint("STATUS");
     }
 
+    private static async Task<int> HandleSandbox(string[] args)
+    {
+        if (args.Length == 0)
+        {
+            Console.Error.WriteLine("Usage: cmux sandbox <status|screen|send|log|launch>");
+            return 1;
+        }
+
+        var subcommand = args[0].ToLowerInvariant();
+        var toolsDir = FindToolsDirectory();
+        if (toolsDir == null)
+        {
+            Console.Error.WriteLine("Error: Cannot find tools/ directory. Run from the repo root.");
+            return 1;
+        }
+
+        return subcommand switch
+        {
+            "status" => ShowFile(Path.Combine(toolsDir, "sandbox-result.txt")),
+            "screen" => OpenFile(Path.Combine(toolsDir, "sandbox-screen.png")),
+            "send" => await SandboxSend(toolsDir, string.Join(" ", args[1..])),
+            "log" => ShowFile(Path.Combine(toolsDir, "sandbox-relay-log.txt")),
+            "launch" => LaunchSandbox(toolsDir),
+            _ => Error($"Unknown sandbox command: {subcommand}"),
+        };
+    }
+
+    private static int ShowFile(string path)
+    {
+        if (!File.Exists(path))
+        {
+            Console.Error.WriteLine($"File not found: {path}");
+            return 1;
+        }
+        Console.Write(File.ReadAllText(path));
+        return 0;
+    }
+
+    private static int OpenFile(string path)
+    {
+        if (!File.Exists(path))
+        {
+            Console.Error.WriteLine($"File not found: {path}");
+            return 1;
+        }
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+        return 0;
+    }
+
+    private static async Task<int> SandboxSend(string toolsDir, string command)
+    {
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            Console.Error.WriteLine("Usage: cmux sandbox send <command>");
+            return 1;
+        }
+
+        var cmdFile = Path.Combine(toolsDir, "sandbox-cmd.txt");
+        var resultFile = Path.Combine(toolsDir, "sandbox-result.txt");
+
+        if (File.Exists(resultFile)) File.Delete(resultFile);
+        await File.WriteAllTextAsync(cmdFile, command);
+
+        for (int i = 0; i < 20; i++)
+        {
+            await Task.Delay(500);
+            if (File.Exists(resultFile))
+            {
+                Console.Write(await File.ReadAllTextAsync(resultFile));
+                return 0;
+            }
+        }
+
+        Console.Error.WriteLine("Timeout: no response from sandbox relay.");
+        return 1;
+    }
+
+    private static int LaunchSandbox(string toolsDir)
+    {
+        var wsbPath = Path.Combine(toolsDir, "sandbox.wsb");
+        if (!File.Exists(wsbPath))
+        {
+            Console.Error.WriteLine($"Sandbox config not found: {wsbPath}");
+            return 1;
+        }
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(wsbPath) { UseShellExecute = true });
+        Console.WriteLine("Windows Sandbox launching...");
+        return 0;
+    }
+
+    private static string? FindToolsDirectory()
+    {
+        var dir = Directory.GetCurrentDirectory();
+        for (int i = 0; i < 10; i++)
+        {
+            var candidate = Path.Combine(dir, "tools", "sandbox-relay.ps1");
+            if (File.Exists(candidate)) return Path.Combine(dir, "tools");
+            var parent = Directory.GetParent(dir);
+            if (parent == null) break;
+            dir = parent.FullName;
+        }
+        return null;
+    }
+
     private static async Task<int> SendAndPrint(string command, Dictionary<string, string>? args = null)
     {
         var response = await NamedPipeClient.SendCommand(command, args);
@@ -297,6 +402,13 @@ public static class Program
                   --lines <n>       Number of lines (default: 80)
 
               run <command>         Split down and run a command in the new pane
+
+              sandbox               Windows Sandbox testing environment
+                status              Show last sandbox command result
+                screen              Open sandbox screenshot in viewer
+                send <cmd>          Send a command to sandbox relay
+                log                 Show sandbox relay log
+                launch              Launch the Windows Sandbox VM
 
               status                Show cmux status
 

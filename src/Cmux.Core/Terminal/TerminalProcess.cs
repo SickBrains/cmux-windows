@@ -22,6 +22,7 @@ public sealed class TerminalProcess : IDisposable
     public TerminalProcess(PseudoConsole console, string? command = null, string? workingDirectory = null)
     {
         var shellCommand = command ?? DetectShell();
+        IPC.DaemonClient.LogDaemon($"[TerminalProcess] Creating: shell=\"{shellCommand}\" cwd=\"{workingDirectory}\"");
 
         // Initialize thread attribute list for ConPTY
         _attributeList = CreateAttributeList(console.Handle);
@@ -46,7 +47,13 @@ public sealed class TerminalProcess : IDisposable
             out _processInfo);
 
         if (!success)
-            throw new Win32Exception(Marshal.GetLastWin32Error(), "Failed to create process with ConPTY.");
+        {
+            var err = Marshal.GetLastWin32Error();
+            IPC.DaemonClient.LogDaemon($"[TerminalProcess] CreateProcess FAILED: error={err}");
+            throw new Win32Exception(err, "Failed to create process with ConPTY.");
+        }
+
+        IPC.DaemonClient.LogDaemon($"[TerminalProcess] Created: PID={_processInfo.dwProcessId}");
 
         // Start a background thread to wait for process exit
         _waitThread = new Thread(WaitForExitThread)
@@ -135,9 +142,20 @@ public sealed class TerminalProcess : IDisposable
         return attributeList;
     }
 
+    public int ExitCode
+    {
+        get
+        {
+            if (GetExitCodeProcess(_processInfo.hProcess, out uint code) && code != STILL_ACTIVE)
+                return (int)code;
+            return -1;
+        }
+    }
+
     private void WaitForExitThread()
     {
         WaitForSingleObject(_processInfo.hProcess, INFINITE);
+        IPC.DaemonClient.LogDaemon($"[TerminalProcess] PID={_processInfo.dwProcessId} exited with code {ExitCode}");
         Exited?.Invoke();
     }
 

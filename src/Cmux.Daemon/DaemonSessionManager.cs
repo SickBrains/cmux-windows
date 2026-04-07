@@ -46,7 +46,9 @@ public sealed class DaemonSessionManager : IDisposable
 
         session.ProcessExited += () =>
         {
-            SessionExited?.Invoke(paneId, 0);
+            var exitCode = session.ExitCode;
+            LogDaemon($"[SessionMgr] Session {paneId} process exited with code {exitCode}");
+            SessionExited?.Invoke(paneId, exitCode);
         };
 
         session.TitleChanged += title =>

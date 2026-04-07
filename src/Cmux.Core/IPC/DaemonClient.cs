@@ -14,8 +14,9 @@ public sealed class DaemonClient : IDisposable
     private CancellationTokenSource? _listenCts;
     private volatile bool _disposed;
 
-    // Synchronization: only one request at a time, listen loop feeds response back via TCS
-    private readonly SemaphoreSlim _requestLock = new(1, 1);
+    // _pipeLock guards all pipe writes (prevents interleaved JSON lines)
+    // _pendingResponse is set only for request-response pairs (not fire-and-forget writes)
+    private readonly SemaphoreSlim _pipeLock = new(1, 1);
     private TaskCompletionSource<DaemonResponse?>? _pendingResponse;
 
     public bool IsConnected => _pipe?.IsConnected == true && _connected;
@@ -291,6 +292,10 @@ public sealed class DaemonClient : IDisposable
         _pipe.Write(bytes, 0, bytes.Length);
     }
 
+    /// <summary>
+    /// Sends a request and waits for a response. The pipe write is guarded by _pipeLock,
+    /// but the response wait happens OUTSIDE the lock so writes can still proceed.
+    /// </summary>
     private async Task<DaemonResponse?> SendRequestAsync(DaemonRequest request)
     {
         if (!IsConnected || _pipe == null)
@@ -299,10 +304,12 @@ public sealed class DaemonClient : IDisposable
             return null;
         }
 
-        await _requestLock.WaitAsync().ConfigureAwait(false);
+        var tcs = new TaskCompletionSource<DaemonResponse?>();
+
+        // Acquire pipe lock, set up TCS, write, release lock
+        await _pipeLock.WaitAsync().ConfigureAwait(false);
         try
         {
-            var tcs = new TaskCompletionSource<DaemonResponse?>();
             _pendingResponse = tcs;
 
             var json = JsonSerializer.Serialize(request);
@@ -319,8 +326,15 @@ public sealed class DaemonClient : IDisposable
                 _pendingResponse = null;
                 return null;
             }
+        }
+        finally
+        {
+            _pipeLock.Release();
+        }
 
-            // Wait for listen loop to deliver the response (3s timeout)
+        // Wait for response OUTSIDE the lock — writes can proceed in parallel
+        try
+        {
             using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
             timeoutCts.Token.Register(() => tcs.TrySetResult(null));
 
@@ -333,10 +347,6 @@ public sealed class DaemonClient : IDisposable
             LogDaemon($"[SendRequest] Exception: {ex.GetType().Name}: {ex.Message}");
             _pendingResponse = null;
             return null;
-        }
-        finally
-        {
-            _requestLock.Release();
         }
     }
 
@@ -374,14 +384,33 @@ public sealed class DaemonClient : IDisposable
         return null;
     }
 
+    /// <summary>
+    /// Fire-and-forget write — acquires pipe lock, sends, releases. No response wait.
+    /// The daemon does not send responses for writes, so this is safe.
+    /// </summary>
     public async Task WriteAsync(string paneId, byte[] data)
     {
-        await SendRequestAsync(new DaemonRequest
+        if (!IsConnected || _pipe == null) return;
+
+        await _pipeLock.WaitAsync().ConfigureAwait(false);
+        try
         {
-            Type = DaemonMessageTypes.SessionWrite,
-            PaneId = paneId,
-            Data = Convert.ToBase64String(data),
-        });
+            var json = JsonSerializer.Serialize(new DaemonRequest
+            {
+                Type = DaemonMessageTypes.SessionWrite,
+                PaneId = paneId,
+                Data = Convert.ToBase64String(data),
+            });
+            WriteToPipe(json);
+        }
+        catch (IOException)
+        {
+            _connected = false;
+        }
+        finally
+        {
+            _pipeLock.Release();
+        }
     }
 
     public async Task WriteAsync(string paneId, string text)
@@ -451,6 +480,6 @@ public sealed class DaemonClient : IDisposable
         _reader?.Dispose();
         _pipe?.Dispose();
         _listenCts?.Dispose();
-        _requestLock.Dispose();
+        _pipeLock.Dispose();
     }
 }
