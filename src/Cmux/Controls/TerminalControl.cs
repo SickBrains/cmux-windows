@@ -392,6 +392,7 @@ public class TerminalControl : FrameworkElement
     private void Render()
     {
         if (_session == null) return;
+        var renderSw = System.Diagnostics.Stopwatch.StartNew();
 
         try
         {
@@ -613,6 +614,12 @@ public class TerminalControl : FrameworkElement
         catch (Exception ex)
         {
             Debug.WriteLine($"[TerminalControl] Render failed: {ex}");
+        }
+        finally
+        {
+            renderSw.Stop();
+            if (_session != null)
+                Core.Services.PerformanceMonitor.Instance.ReportRender(_session.PaneId, renderSw.Elapsed.TotalMilliseconds);
         }
     }
 

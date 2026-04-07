@@ -20,6 +20,7 @@ public partial class SurfaceViewModel : ObservableObject, IDisposable
     private readonly Dictionary<string, string?> _paneShells = [];
     private readonly HashSet<string> _daemonPanes = [];
     private readonly HashSet<string> _daemonOutputLogged = [];
+    private readonly HashSet<string> _autoNamedPanes = [];
     private static readonly object _daemonWaitLock = new();
     private static bool _daemonWaitDone;
 
@@ -178,6 +179,8 @@ public partial class SurfaceViewModel : ObservableObject, IDisposable
         return _sessions.GetValueOrDefault(paneId);
     }
 
+    public bool IsDaemonPane(string paneId) => _daemonPanes.Contains(paneId);
+
     public string GetPaneTitle(string paneId, string? fallbackTitle)
     {
         if (Surface.PaneCustomNames.TryGetValue(paneId, out var custom) && !string.IsNullOrWhiteSpace(custom))
@@ -189,9 +192,15 @@ public partial class SurfaceViewModel : ObservableObject, IDisposable
     public void SetPaneCustomName(string paneId, string name)
     {
         if (string.IsNullOrWhiteSpace(name))
+        {
             Surface.PaneCustomNames.Remove(paneId);
+            _autoNamedPanes.Remove(paneId);
+        }
         else
+        {
             Surface.PaneCustomNames[paneId] = name.Trim();
+            _autoNamedPanes.Remove(paneId); // User-set name takes priority
+        }
 
         OnPropertyChanged(nameof(RootNode));
     }
@@ -520,6 +529,18 @@ public partial class SurfaceViewModel : ObservableObject, IDisposable
                 var sanitized = App.CommandLogService.SanitizeCommandForStorage(payload);
                 if (!string.IsNullOrWhiteSpace(sanitized))
                     AppendToCommandHistory(paneId, sanitized);
+
+                // Auto-name pane based on command (only if no user-set custom name)
+                if (!Surface.PaneCustomNames.ContainsKey(paneId) || _autoNamedPanes.Contains(paneId))
+                {
+                    var autoName = CommandNameResolver.Resolve(payload);
+                    if (autoName != null)
+                    {
+                        Surface.PaneCustomNames[paneId] = autoName;
+                        _autoNamedPanes.Add(paneId);
+                        OnPropertyChanged(nameof(RootNode));
+                    }
+                }
             }
         };
     }

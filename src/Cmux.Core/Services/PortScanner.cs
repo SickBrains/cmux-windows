@@ -10,27 +10,35 @@ namespace Cmux.Core.Services;
 /// </summary>
 public static class PortScanner
 {
+    public record PortInfo(int Port, int Pid, string ProcessName);
+
     /// <summary>
     /// Gets all TCP ports in LISTEN state for a given process and its children.
     /// </summary>
     public static List<int> GetListeningPorts(int processId)
     {
-        var ports = new HashSet<int>();
+        return GetListeningPortsWithInfo(processId).Select(p => p.Port).ToList();
+    }
+
+    /// <summary>
+    /// Gets all TCP ports with process info for a given process tree.
+    /// </summary>
+    public static List<PortInfo> GetListeningPortsWithInfo(int processId)
+    {
+        var results = new List<PortInfo>();
         var processIds = GetProcessTree(processId);
 
         try
         {
-            var properties = IPGlobalProperties.GetIPGlobalProperties();
-            var listeners = properties.GetActiveTcpListeners();
-
-            // netstat approach: match ports to PIDs via PowerShell
-            // This is faster than iterating all connections
             var pidPorts = GetPidPortMap();
 
             foreach (var (pid, port) in pidPorts)
             {
                 if (processIds.Contains(pid) && port > 0)
-                    ports.Add(port);
+                {
+                    var procName = GetProcessName(pid);
+                    results.Add(new PortInfo(port, pid, procName));
+                }
             }
         }
         catch
@@ -38,7 +46,20 @@ public static class PortScanner
             // Port scanning is best-effort
         }
 
-        return ports.OrderBy(p => p).ToList();
+        return results.OrderBy(p => p.Port).ToList();
+    }
+
+    private static string GetProcessName(int pid)
+    {
+        try
+        {
+            using var proc = Process.GetProcessById(pid);
+            return proc.ProcessName;
+        }
+        catch
+        {
+            return $"PID {pid}";
+        }
     }
 
     /// <summary>

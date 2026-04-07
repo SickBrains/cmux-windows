@@ -34,6 +34,9 @@ public partial class MainViewModel : ObservableObject
     private bool _notificationPanelVisible;
 
     [ObservableProperty]
+    private bool _infoPanelVisible;
+
+    [ObservableProperty]
     private int _totalUnreadCount;
 
     private readonly NotificationService _notificationService;
@@ -208,6 +211,9 @@ public partial class MainViewModel : ObservableObject
 
     [RelayCommand]
     public void ToggleNotificationPanel() => NotificationPanelVisible = !NotificationPanelVisible;
+
+    [RelayCommand]
+    public void ToggleInfoPanel() => InfoPanelVisible = !InfoPanelVisible;
 
     partial void OnCompactSidebarChanged(bool value)
     {

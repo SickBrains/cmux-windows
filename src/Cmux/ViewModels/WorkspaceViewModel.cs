@@ -150,6 +150,15 @@ public partial class WorkspaceViewModel : ObservableObject, IDisposable
                 }
             }
 
+            // Scan ports for the active surface's shell process
+            var activeSurface = SelectedSurface;
+            if (activeSurface?.ShellPid is int pid and > 0)
+            {
+                var ports = PortScanner.GetListeningPorts(pid);
+                var display = ports.Count > 0 ? string.Join(" ", ports) : "";
+                if (display != PortsDisplay)
+                    PortsDisplay = display;
+            }
         }
         catch
         {

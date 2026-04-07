@@ -637,6 +637,7 @@ public partial class MainWindow : Window
             new() { Id = "split-down", Label = "Split Down", Icon = "\uE74B", Shortcut = "Ctrl+Shift+D", Category = "Pane", Execute = () => ViewModel.SelectedWorkspace?.SelectedSurface?.SplitDown() },
             new() { Id = "toggle-sidebar", Label = "Toggle Sidebar", Icon = "\uE700", Shortcut = "Ctrl+B", Category = "View", Execute = () => ViewModel.ToggleSidebar() },
             new() { Id = "notifications", Label = "Notifications", Icon = "\uEA8F", Shortcut = "Ctrl+I", Category = "View", Execute = () => ViewModel.ToggleNotificationPanel() },
+            new() { Id = "system-info", Label = "System Info Panel", Icon = "\uE9D9", Shortcut = "Ctrl+Shift+I", Category = "View", Execute = () => ViewModel.ToggleInfoPanel() },
             new() { Id = "test-notification", Label = "Test Notification", Icon = "\uE7F4", Category = "View", Execute = ShowTestNotification },
             new() { Id = "open-logs", Label = "Open Command Logs", Icon = "\uE7BA", Shortcut = "Ctrl+Shift+L", Category = "Logs", Execute = OpenLogsWindow },
             new() { Id = "open-session-vault", Label = "Open Session Vault", Icon = "\uE8D1", Shortcut = "Ctrl+Shift+V", Category = "Logs", Execute = OpenSessionVault },
