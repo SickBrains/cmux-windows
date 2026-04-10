@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "cmux": {
+      "command": "python",
+      "args": [
+        "C:\\Users\\MAG\\Documents\\GitHub\\cmux-windows\\tools\\cmux_mcp_server.py"
+      ]
+    }
+  }
+}
